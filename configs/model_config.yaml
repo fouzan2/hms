@@ -1,0 +1,193 @@
+# HMS Harmful Brain Activity Classification - Model Configuration
+
+# EEG signal parameters
+eeg:
+  channels: ['Fp1', 'Fp2', 'F3', 'F4', 'C3', 'C4', 'P3', 'P4', 'O1', 'O2', 
+             'F7', 'F8', 'T3', 'T4', 'T5', 'T6', 'Fz', 'Cz', 'Pz', 'A1']
+  sampling_rate: 200
+  segment_length: 50  # seconds
+  overlap: 0.5
+
+# Classes for harmful brain activity
+classes:
+  - generalized_periodic_discharges  # GPD
+  - generalized_rhythmic_delta_activity  # GRDA
+  - lateralized_periodic_discharges  # LPD
+  - lateralized_rhythmic_delta_activity  # LRDA
+  - other
+  - seizure
+
+# Model configurations
+models:
+  # ResNet1D-GRU model configuration
+  resnet1d_gru:
+    resnet:
+      num_blocks: [3, 4, 6, 3]  # ResNet depth
+      initial_filters: 64
+      dropout: 0.3
+      use_se: true  # Squeeze-and-excitation
+      use_multiscale: true  # Multi-scale features
+    gru:
+      hidden_size: 256
+      num_layers: 2
+      bidirectional: true
+      dropout: 0.3
+      n_heads: 8  # Multi-head attention
+    training:
+      batch_size: 32
+      learning_rate: 0.001
+      weight_decay: 0.0001
+      epochs: 100
+      mixed_precision: true
+      focal_gamma: 2.0
+      temporal_weight: 0.1
+      T_0: 10  # Cosine annealing restart period
+      T_mult: 2
+
+  # EfficientNet model configuration
+  efficientnet:
+    model_name: 'efficientnet-b3'
+    dropout: 0.4
+    drop_path_rate: 0.2
+    progressive_epochs: 50
+    training:
+      batch_size: 16
+      learning_rate: 0.0005
+      weight_decay: 0.00001
+      epochs: 100
+      mixed_precision: true
+      label_smoothing: 0.1
+
+  # Ensemble model configuration
+  ensemble:
+    method: 'stacking'  # Options: 'stacking', 'bayesian', 'adaptive', 'weighted'
+    meta_learner: 'neural'  # Options: 'neural', 'xgboost', 'lightgbm', 'logistic'
+    meta_learner_params:
+      n_estimators: 100
+      max_depth: 5
+      learning_rate: 0.1
+    diversity_weight: 0.1
+    temperature_scaling: true
+
+# Data augmentation
+training:
+  augmentation:
+    time_domain:
+      time_shift: 0.1
+      amplitude_scale: [0.8, 1.2]
+      gaussian_noise: 0.01
+      mixup_alpha: 1.0
+    frequency_domain:
+      freq_mask: 0.1
+      time_mask: 0.1
+      spec_augment: true
+  
+  # Class balancing
+  class_balancing:
+    method: 'focal_loss'  # Options: 'focal_loss', 'weighted_sampling', 'smote'
+    focal_gamma: 2.0
+    class_weights: 'balanced'  # or specific weights
+  
+  # Optimization
+  optimization:
+    optimizer: 'adamw'  # Options: 'adamw', 'sam', 'lookahead'
+    scheduler: 'cosine_warmup'  # Options: 'cosine_warmup', 'onecycle', 'exponential'
+    warmup_epochs: 5
+    gradient_clip: 1.0
+    gradient_clip_method: 'adaptive'  # Options: 'norm', 'value', 'adaptive'
+    
+  # Regularization
+  regularization:
+    dropout: 0.3
+    dropconnect: 0.2
+    weight_decay: 0.0001
+    cutout: true
+    cutout_holes: 1
+    cutout_length: 16
+    
+  # Early stopping
+  early_stopping:
+    patience: 15
+    min_delta: 0.001
+    monitor: 'val_loss'
+    mode: 'min'
+
+# Model compression
+compression:
+  pruning:
+    enabled: false
+    method: 'magnitude'  # Options: 'magnitude', 'structured'
+    sparsity: 0.5
+  quantization:
+    enabled: false
+    backend: 'qnnpack'
+  distillation:
+    enabled: false
+    teacher_model: 'ensemble'
+    temperature: 3.0
+    alpha: 0.7
+
+# Evaluation metrics
+evaluation:
+  metrics:
+    - accuracy
+    - balanced_accuracy
+    - f1_macro
+    - f1_weighted
+    - sensitivity
+    - specificity
+    - auc_roc
+    - auc_pr
+    - matthews_corrcoef
+  
+  # Clinical metrics
+  clinical_metrics:
+    - seizure_detection_sensitivity
+    - seizure_detection_latency
+    - false_positive_rate_per_hour
+    - artifact_detection_rate
+
+# Inference settings
+inference:
+  batch_size: 64
+  use_tta: true  # Test-time augmentation
+  tta_transforms: 3
+  uncertainty_estimation: true
+  calibration_method: 'temperature'  # Options: 'temperature', 'platt', 'isotonic'
+
+# Hardware settings
+hardware:
+  device: 'cuda'
+  num_workers: 8
+  pin_memory: true
+  distributed:
+    enabled: false
+    backend: 'nccl'
+    world_size: 1
+
+# Logging and checkpointing
+logging:
+  experiment_name: 'hms_brain_activity'
+  log_level: 'INFO'
+  tensorboard: true
+  wandb:
+    enabled: true
+    project: 'hms-brain-activity'
+    entity: null
+  mlflow:
+    enabled: true
+    tracking_uri: 'http://localhost:5000'
+    
+checkpointing:
+  save_frequency: 5  # epochs
+  save_best_only: true
+  monitor_metric: 'val_balanced_accuracy'
+  keep_n_checkpoints: 3
+
+# Paths
+paths:
+  data_dir: 'data/raw'
+  processed_dir: 'data/processed'
+  models_dir: 'data/models'
+  logs_dir: 'logs'
+  cache_dir: 'data/cache' 

@@ -1,0 +1,144 @@
+groups:
+  - name: eeg_critical_alerts
+    interval: 30s
+    rules:
+      - alert: SeizureDetected
+        expr: increase(seizure_detections_total[5m]) > 0
+        for: 30s
+        labels:
+          severity: critical
+          category: clinical
+        annotations:
+          summary: "Seizure detected for patient"
+          description: "{{ $labels.patient_id }} has had {{ $value }} seizure(s) detected in the last 5 minutes"
+          action: "Immediate clinical intervention required"
+
+      - alert: HighPredictionErrorRate
+        expr: rate(eeg_prediction_errors_total[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+          category: system
+        annotations:
+          summary: "High prediction error rate"
+          description: "Error rate is {{ $value | humanizePercentage }} over the last 5 minutes"
+          action: "Check system logs and model health"
+
+      - alert: LowConfidencePredictions
+        expr: rate(eeg_low_confidence_predictions_total[5m]) > 0.2
+        for: 5m
+        labels:
+          severity: warning
+          category: model
+        annotations:
+          summary: "High rate of low-confidence predictions"
+          description: "{{ $value | humanizePercentage }} of predictions have low confidence"
+          action: "Review model performance and consider retraining"
+
+  - name: eeg_system_alerts
+    interval: 30s
+    rules:
+      - alert: APIHighLatency
+        expr: histogram_quantile(0.95, rate(eeg_prediction_duration_seconds_bucket[5m])) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          category: performance
+        annotations:
+          summary: "API prediction latency is high"
+          description: "95th percentile latency is {{ $value }}s (threshold: 0.5s)"
+          action: "Check API performance and resource allocation"
+
+      - alert: APIDown
+        expr: up{job="hms-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: availability
+        annotations:
+          summary: "HMS API is down"
+          description: "The EEG prediction API has been down for more than 1 minute"
+          action: "Check API container and logs immediately"
+
+      - alert: HighMemoryUsage
+        expr: container_memory_usage_bytes{name="hms-api"} / container_spec_memory_limit_bytes{name="hms-api"} > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          category: resources
+        annotations:
+          summary: "API memory usage is high"
+          description: "Memory usage is at {{ $value | humanizePercentage }} of limit"
+          action: "Monitor for OOM kills and consider scaling"
+
+      - alert: GPUUtilizationHigh
+        expr: nvidia_smi_utilization_gpu_ratio > 0.95
+        for: 10m
+        labels:
+          severity: warning
+          category: resources
+        annotations:
+          summary: "GPU utilization is very high"
+          description: "GPU is at {{ $value | humanizePercentage }} utilization"
+          action: "Check for queued predictions and consider scaling"
+
+  - name: eeg_data_quality_alerts
+    interval: 1m
+    rules:
+      - alert: HighNoiseDetection
+        expr: rate(eeg_high_noise_segments_total[10m]) > 0.3
+        for: 5m
+        labels:
+          severity: warning
+          category: data_quality
+        annotations:
+          summary: "High rate of noisy EEG segments"
+          description: "{{ $value | humanizePercentage }} of segments have high noise"
+          action: "Check EEG recording equipment and environment"
+
+      - alert: MissingChannels
+        expr: eeg_missing_channels_total > 0
+        for: 2m
+        labels:
+          severity: warning
+          category: data_quality
+        annotations:
+          summary: "Missing EEG channels detected"
+          description: "{{ $value }} channels are missing or corrupted"
+          action: "Check electrode connections and signal quality"
+
+      - alert: StreamingConnectionLost
+        expr: rate(eeg_streaming_disconnections_total[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+          category: connectivity
+        annotations:
+          summary: "Frequent streaming disconnections"
+          description: "Streaming connections are dropping at {{ $value }} per second"
+          action: "Check network stability and client connections"
+
+  - name: eeg_model_alerts
+    interval: 1m
+    rules:
+      - alert: ModelDriftDetected
+        expr: abs(eeg_model_prediction_distribution_drift) > 0.2
+        for: 30m
+        labels:
+          severity: warning
+          category: model_health
+        annotations:
+          summary: "Model prediction drift detected"
+          description: "Model predictions have drifted by {{ $value }} from baseline"
+          action: "Review recent predictions and consider model update"
+
+      - alert: UncertaintyTooHigh
+        expr: avg_over_time(eeg_prediction_uncertainty_mean[10m]) > 0.5
+        for: 15m
+        labels:
+          severity: warning
+          category: model_health
+        annotations:
+          summary: "Model uncertainty is high"
+          description: "Average uncertainty is {{ $value }} (threshold: 0.5)"
+          action: "Check input data quality and model confidence" 

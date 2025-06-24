@@ -1,0 +1,192 @@
+# Core ML/DL frameworks
+torch
+torchvision
+tensorflow
+scikit-learn
+xgboost
+lightgbm
+
+# Deep Learning models
+efficientnet-pytorch
+timm
+
+# EEG processing
+mne
+mne-bids
+scipy
+pywavelets
+# pyEEG>=0.4.0  # Commented out - not available in required version
+antropy
+yasa
+
+# Medical data formats
+pyedflib
+h5py
+pymatreader
+
+# Data processing
+numpy
+pandas
+librosa
+numba
+
+# Visualization
+matplotlib
+seaborn
+plotly
+ipympl
+altair
+
+# Model interpretation
+shap
+captum
+lime
+
+# API and deployment
+fastapi
+uvicorn
+pydantic
+redis
+prometheus-client
+websockets
+python-multipart
+
+# Model optimization
+onnx
+onnxruntime
+# onnxruntime-gpu
+onnx-simplifier
+
+# Experiment tracking
+mlflow
+wandb
+optuna
+tensorboard
+tensorboardX
+
+# Utilities
+pyyaml
+tqdm
+joblib
+einops
+kaggle==1.5.16
+python-dotenv
+rich
+psutil
+
+# Testing
+pytest
+pytest-cov
+pytest-asyncio
+pytest-xdist
+hypothesis
+
+# Code quality
+black
+flake8
+mypy
+isort
+pylint
+pre-commit
+
+# Documentation
+sphinx
+sphinx-rtd-theme
+sphinx-autodoc-typehints
+myst-parser
+
+# Jupyter and development
+jupyter
+jupyterlab
+ipywidgets
+nbconvert
+nbdime
+
+# Data validation and quality
+great-expectations
+pandera
+
+# Configuration management
+hydra-core
+omegaconf
+
+# Parallel processing
+dask
+dask-ml
+ray
+
+# Database and caching
+sqlalchemy
+alembic
+diskcache
+
+# GPU and CUDA utilities (optional)
+# cupy-cuda11x>=12.0.0  # GPU arrays
+# pycuda>=2022.2  # CUDA programming
+
+# ============ Phase 8 Dependencies ============
+
+# Distributed Training
+# horovod  # Optional - requires CMake 3.13+ and complex build dependencies
+# fairscale
+# torch-distributed  # Included with torch
+
+# Performance Monitoring
+gputil
+nvidia-ml-py
+influxdb
+flask
+aiohttp
+
+# Model Optimization
+torch-pruning
+thop
+torch-summary
+
+# Memory Optimization
+memory-profiler
+pympler
+
+# Benchmarking
+py-cpuinfo
+# nvidia-dali==1.31.0  # Optional, requires CUDA
+
+# ============ Phase 9 Dependencies ============
+
+# Interactive Dashboard
+dash
+dash-bootstrap-components
+dash-daq
+dash-table
+dash-cytoscape
+dash-leaflet
+
+# Enhanced Visualization
+plotly-express
+kaleido
+wordcloud
+networkx
+graphviz
+
+# Medical Report Generation
+reportlab
+python-docx
+jinja2
+weasyprint
+markdown
+
+# Real-time Features
+flask-socketio
+python-socketio
+eventlet
+
+# Additional Utilities
+humanize
+pytz
+APScheduler
+
+# Database drivers
+psycopg2-binary
+
+# HTTP client
+requests

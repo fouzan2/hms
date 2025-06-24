@@ -1,0 +1,80 @@
+# Example Nginx configuration for HMS EEG Classification System
+# This will be used when frontend is integrated
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    upstream api {
+        server api:8000;
+    }
+
+    upstream mlflow {
+        server mlflow:5000;
+    }
+
+    upstream grafana {
+        server grafana:3000;
+    }
+
+    upstream dashboard {
+        server visualization-dashboard:8050;
+    }
+
+    server {
+        listen 80;
+        server_name localhost;
+
+        # Frontend routes (to be configured when frontend is ready)
+        # location / {
+        #     proxy_pass http://frontend:3000;
+        #     proxy_http_version 1.1;
+        #     proxy_set_header Upgrade $http_upgrade;
+        #     proxy_set_header Connection 'upgrade';
+        #     proxy_set_header Host $host;
+        #     proxy_cache_bypass $http_upgrade;
+        # }
+
+        # API routes
+        location /api {
+            rewrite ^/api(.*)$ $1 break;
+            proxy_pass http://api;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        # WebSocket support
+        location /ws {
+            proxy_pass http://api;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+        }
+
+        # MLflow
+        location /mlflow {
+            proxy_pass http://mlflow;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+        }
+
+        # Grafana
+        location /grafana {
+            proxy_pass http://grafana;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+        }
+
+        # Visualization Dashboard
+        location /dashboard {
+            proxy_pass http://dashboard;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+        }
+    }
+} 

@@ -1,0 +1,509 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15
+    container_name: hms-postgres
+    environment:
+      POSTGRES_DB: hms_eeg
+      POSTGRES_USER: hms_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secure_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hms_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for caching and real-time features
+  redis:
+    image: redis:7-alpine
+    container_name: hms-redis
+    command: redis-server --requirepass ${REDIS_PASSWORD:-redis_password}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Kafka for streaming
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: hms-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_logs:/var/lib/zookeeper/log
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: hms-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: INSIDE://kafka:9093,OUTSIDE://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INSIDE:PLAINTEXT,OUTSIDE:PLAINTEXT
+      KAFKA_LISTENERS: INSIDE://0.0.0.0:9093,OUTSIDE://0.0.0.0:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: INSIDE
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+
+  # MLflow for model tracking
+  mlflow:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+    container_name: hms-mlflow
+    command: >
+      bash -c "pip install mlflow psycopg2-binary &&
+               mlflow server --backend-store-uri postgresql://hms_user:${POSTGRES_PASSWORD:-secure_password}@postgres/hms_eeg
+               --default-artifact-root /mlflow/artifacts
+               --host 0.0.0.0
+               --port 5000"
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow_artifacts:/mlflow/artifacts
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      MLFLOW_TRACKING_URI: postgresql://hms_user:${POSTGRES_PASSWORD:-secure_password}@postgres/hms_eeg
+
+  # Main API service with optimizations
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: hms-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models
+      - ./models/optimized:/app/models/optimized  # Mount optimized models
+      - ./config:/app/config
+      - api_logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      mlflow:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql://hms_user:${POSTGRES_PASSWORD:-secure_password}@postgres/hms_eeg
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis_password}@redis:6379
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9093
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      PYTHONUNBUFFERED: 1
+      CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-0}
+      # Optimization settings
+      USE_OPTIMIZED_MODELS: ${USE_OPTIMIZED_MODELS:-true}
+      ENABLE_MONITORING: ${ENABLE_MONITORING:-true}
+      ENABLE_DISTRIBUTED_SERVING: ${ENABLE_DISTRIBUTED_SERVING:-false}
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+
+  # Performance metrics endpoint
+  metrics:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: hms-metrics
+    command: python -m src.deployment.metrics_server
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./config:/app/config
+    depends_on:
+      - api
+    environment:
+      METRICS_PORT: 8001
+      ENABLE_PROMETHEUS: true
+
+  # Streaming processor service
+  streaming-processor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: hms-streaming
+    command: python -m src.deployment.streaming_processor
+    volumes:
+      - ./models:/app/models
+      - ./models/optimized:/app/models/optimized
+      - ./config:/app/config
+    depends_on:
+      - kafka
+      - redis
+      - api
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9093
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis_password}@redis:6379
+      PYTHONUNBUFFERED: 1
+      USE_OPTIMIZED_MODELS: ${USE_OPTIMIZED_MODELS:-true}
+
+  # Prometheus for metrics
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: hms-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    depends_on:
+      - metrics
+
+  # Grafana for visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: hms-grafana
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+      - grafana_data:/var/lib/grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    depends_on:
+      - prometheus
+
+  # Visualization Dashboard for EEG Analysis
+  visualization-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: hms-dashboard
+    command: python -m src.visualization.run_dashboard
+    ports:
+      - "8050:8050"
+    volumes:
+      - ./logs:/app/logs
+      - ./data/processed:/app/data/processed
+      - ./models:/app/models
+      - ./config:/app/config
+    depends_on:
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    environment:
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis_password}@redis:6379
+      DATABASE_URL: postgresql://hms_user:${POSTGRES_PASSWORD:-secure_password}@postgres/hms_eeg
+      PYTHONUNBUFFERED: 1
+      DASH_DEBUG: ${DASH_DEBUG:-false}
+
+  # Frontend Next.js application - TO BE DEVELOPED SEPARATELY
+  # frontend:
+  #   build:
+  #     context: ./webapp/frontend
+  #     dockerfile: Dockerfile
+  #     args:
+  #       NEXT_PUBLIC_API_URL: http://localhost/api
+  #       NEXT_PUBLIC_WS_URL: ws://localhost/ws
+  #       NEXT_PUBLIC_MLFLOW_URL: http://localhost/mlflow
+  #       NEXT_PUBLIC_GRAFANA_URL: http://localhost/grafana
+  #       NEXT_PUBLIC_DASHBOARD_URL: http://localhost/dashboard
+  #   container_name: hms-frontend
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     NODE_ENV: production
+  #   depends_on:
+  #     - api
+  #     - redis
+  #   volumes:
+  #     - ./webapp/frontend/.env.local:/app/.env.local:ro
+  #   restart: unless-stopped
+
+  # Nginx reverse proxy (currently disabled - will be configured when frontend is ready)
+  # nginx:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #     target: web-server
+  #   container_name: hms-nginx
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./webapp/nginx.conf:/etc/nginx/nginx.conf
+  #     - ./ssl:/etc/nginx/ssl
+  #     - nginx_logs:/var/log/nginx
+  #   depends_on:
+  #     - api
+  #     - grafana
+  #     - mlflow
+  #     - metrics
+  #     - visualization-dashboard
+  #   restart: unless-stopped
+
+  # Jupyter notebook for development
+  jupyter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: hms-jupyter
+    command: jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./notebooks:/app/notebooks
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./models/optimized:/app/models/optimized
+    environment:
+      JUPYTER_ENABLE_LAB: 'yes'
+      JUPYTER_TOKEN: ${JUPYTER_TOKEN:-jupyter_token}
+    profiles:
+      - development
+
+  # Model training service (on-demand)
+  trainer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: training
+    container_name: hms-trainer
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./models/optimized:/app/models/optimized
+      - ./logs:/app/logs
+      - ./checkpoints:/app/checkpoints
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-0}
+      # Optimization settings
+      ENABLE_MIXED_PRECISION: ${ENABLE_MIXED_PRECISION:-true}
+      ENABLE_GRADIENT_CHECKPOINTING: ${ENABLE_GRADIENT_CHECKPOINTING:-true}
+    deploy:
+      resources:
+        limits:
+          cpus: '8'
+          memory: 32G
+    profiles:
+      - training
+
+  # GPU-enabled API service
+  api-gpu:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: hms-api-gpu
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models
+      - ./models/optimized:/app/models/optimized
+      - ./config:/app/config
+      - api_logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      mlflow:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql://hms_user:${POSTGRES_PASSWORD:-secure_password}@postgres/hms_eeg
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis_password}@redis:6379
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9093
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      PYTHONUNBUFFERED: 1
+      CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-0}
+      USE_OPTIMIZED_MODELS: ${USE_OPTIMIZED_MODELS:-true}
+      ENABLE_MONITORING: ${ENABLE_MONITORING:-true}
+      ENABLE_DISTRIBUTED_SERVING: ${ENABLE_DISTRIBUTED_SERVING:-false}
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    profiles:
+      - gpu
+
+  # GPU-enabled trainer service
+  trainer-gpu:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: training
+    container_name: hms-trainer-gpu
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./models/optimized:/app/models/optimized
+      - ./logs:/app/logs
+      - ./checkpoints:/app/checkpoints
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-0}
+      ENABLE_MIXED_PRECISION: ${ENABLE_MIXED_PRECISION:-true}
+      ENABLE_GRADIENT_CHECKPOINTING: ${ENABLE_GRADIENT_CHECKPOINTING:-true}
+    deploy:
+      resources:
+        limits:
+          cpus: '8'
+          memory: 32G
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    profiles:
+      - gpu
+      - training
+
+  # Data downloader service
+  data-downloader:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner
+    container_name: hms-downloader
+    command: scripts/download_dataset.py
+    user: "1000:1000"
+    volumes:
+      - ./data:/app/data:Z
+      - ~/.kaggle:/tmp/.kaggle:ro
+    environment:
+      HOME: /tmp
+      KAGGLE_CONFIG_DIR: /tmp/.kaggle
+      KAGGLE_USERNAME: ${KAGGLE_USERNAME}
+      KAGGLE_KEY: ${KAGGLE_KEY}
+    profiles:
+      - download
+
+  # Model optimizer service
+  optimizer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: hms-optimizer
+    command: python scripts/optimize_models.py --optimization-level 2
+    volumes:
+      - ./models:/app/models
+      - ./models/optimized:/app/models/optimized
+      - ./config:/app/config
+    environment:
+      CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-0}
+      ENABLE_TENSORRT: ${ENABLE_TENSORRT:-false}
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 16G
+    profiles:
+      - optimization
+
+  # GPU-enabled optimizer service
+  optimizer-gpu:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: hms-optimizer-gpu
+    command: python scripts/optimize_models.py --optimization-level 2
+    volumes:
+      - ./models:/app/models
+      - ./models/optimized:/app/models/optimized
+      - ./config:/app/config
+    environment:
+      CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-0}
+      ENABLE_TENSORRT: ${ENABLE_TENSORRT:-true}
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 16G
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    profiles:
+      - optimization
+      - gpu
+
+  # Backup service
+  backup:
+    image: postgres:15
+    container_name: hms-backup
+    command: >
+      bash -c "while true; do
+        PGPASSWORD=${POSTGRES_PASSWORD:-secure_password} pg_dump -h postgres -U hms_user hms_eeg > /backups/backup_$$(date +%Y%m%d_%H%M%S).sql;
+        find /backups -name 'backup_*.sql' -mtime +7 -delete;
+        sleep 86400;
+      done"
+    volumes:
+      - ./backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles:
+      - production
+
+volumes:
+  postgres_data:
+  redis_data:
+  zookeeper_data:
+  zookeeper_logs:
+  kafka_data:
+  mlflow_artifacts:
+  api_logs:
+  prometheus_data:
+  grafana_data:
+  nginx_logs:
+
+networks:
+  default:
+    name: hms-network
+    driver: bridge
+
+# Environment-specific overrides
+# Use: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up 
