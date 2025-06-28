@@ -1,0 +1,87 @@
+# Test configuration - compatible with existing codebase
+dataset:
+  name: "hms-harmful-brain-activity-classification"
+  raw_data_path: "data/raw"
+  processed_data_path: "data/processed"
+  eeg_sampling_rate: 200
+  eeg_duration: 50
+  num_classes: 6
+  val_split: 0.2
+  test_split: 0.1
+  seed: 42
+  
+# Add missing EEG configuration  
+eeg:
+  channels: ['Fp1', 'Fp2', 'F3', 'F4', 'C3', 'C4', 'P3', 'P4', 'O1', 'O2', 'F7', 'F8', 'T3', 'T4', 'T5', 'T6', 'Fz', 'Cz', 'Pz']
+  sampling_rate: 200
+  
+# Add classes configuration
+classes: ['seizure', 'lpd', 'gpd', 'lrda', 'grda', 'other']
+
+# TEST ONLY: Process small subset
+preprocessing:
+  num_channels: 19
+  window_length: 50
+  overlap: 0.5
+  max_samples_test: 100  # Increased from 10 to 50 for proper train/val split
+  
+  filter:
+    lowcut: 0.5
+    highcut: 50.0
+    filter_order: 4
+    notch_freq: 60.0
+    
+  # Add missing spectrogram configuration
+  spectrogram:
+    window_size: 512
+    overlap: 256
+    nfft: 1024
+    freq_min: 0.5
+    freq_max: 50.0
+  
+models:
+  resnet1d_gru:
+    enabled: true
+    resnet:
+      initial_filters: 32  # Reduced for local testing
+      num_blocks: [2, 2, 2, 2]  # Fixed: needs 4 layers for ResNet architecture
+      kernel_size: 5
+      dropout: 0.3
+      use_se: true  # Add missing SE block flag
+      use_multiscale: true  # Add missing multiscale flag
+    gru:
+      hidden_size: 128  # Reduced
+      num_layers: 1  # Simplified
+      bidirectional: true
+      dropout: 0.3
+      n_heads: 4  # Add missing attention heads
+    training:
+      batch_size: 4  # Small for local testing
+      learning_rate: 0.001
+      epochs: 3  # Just 3 epochs for testing
+      early_stopping_patience: 5
+      
+  efficientnet:
+    enabled: true
+    model_name: "efficientnet-b0"  # Smallest version
+    pretrained: true
+    training:
+      batch_size: 2  # Very small for testing
+      learning_rate: 0.0001
+      epochs: 2  # Just 2 epochs for testing
+      
+  ensemble:
+    enabled: false  # Skip for local testing
+    
+training:
+  device: "cuda"
+  num_workers: 2
+  mixed_precision:
+    enabled: true
+    opt_level: "O1"
+    
+# ONNX Export settings
+optimization:
+  onnx_export: true
+  onnx_opset_version: 17
+  optimize_for_inference: true

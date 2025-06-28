@@ -1,0 +1,330 @@
+# HMS Novita AI Production Configuration
+# Optimized for H100 GPU with full dataset training
+# Target: >90% accuracy on full HMS dataset
+
+# Dataset Configuration - FULL DATASET
+dataset:
+  name: "hms-harmful-brain-activity-classification"
+  kaggle_competition: "hms-harmful-brain-activity-classification"
+  raw_data_path: "data/raw"
+  processed_data_path: "data/processed"
+  download_batch_size: 200  # Faster downloads on Novita
+  eeg_sampling_rate: 200
+  eeg_duration: 50
+  spectrogram_duration: 600
+  num_classes: 6
+  val_split: 0.15  # Reduced for more training data
+  test_split: 0.1
+  seed: 42
+  max_samples: null  # Use FULL dataset (106,800 samples)
+  
+# Enhanced EEG Configuration for H100
+eeg:
+  channels:
+    - "Fp1"
+    - "Fp2" 
+    - "F3"
+    - "F4"
+    - "C3"
+    - "C4"
+    - "P3"
+    - "P4"
+    - "O1"
+    - "O2"
+    - "F7"
+    - "F8"
+    - "T3"
+    - "T4"
+    - "T5"
+    - "T6"
+    - "Fz"
+    - "Cz"
+    - "Pz"
+  reference_channels: ["A1", "A2"]
+  montage: "standard_1020"
+  bad_channel_detection:
+    enabled: true
+    threshold_std: 4.0  # More conservative
+    correlation_threshold: 0.15
+
+# Optimized Preprocessing for Production
+preprocessing:
+  num_channels: 19
+  window_length: 50
+  overlap: 0.75  # Higher overlap for better performance
+  
+  filter:
+    lowcut: 0.5
+    highcut: 50.0
+    filter_order: 6  # Higher order for better filtering
+    filter_type: "butterworth"
+    notch_freq: 60.0
+    notch_quality: 35
+  
+  artifact_removal:
+    use_ica: true
+    n_components: 25  # More components for better artifact removal
+    ica_method: "fastica"
+    eog_channels: ["Fp1", "Fp2"]
+    muscle_threshold: 2.5
+    eye_blink_threshold: 3.5
+    
+  denoising:
+    use_wavelet: true
+    wavelet_type: "db6"  # Better wavelet
+    wavelet_level: 6
+    denoise_method: "soft"
+    
+  normalization:
+    method: "robust"
+    clip_percentile: 99.8  # More aggressive clipping
+    
+  spectrogram:
+    window_size: 512  # Higher resolution
+    overlap: 256
+    nfft: 1024
+    freq_min: 0.5
+    freq_max: 50.0
+    colormap: "viridis"
+    log_scale: true
+
+# Enhanced Model Configuration for >90% Accuracy
+models:
+  # Advanced ResNet1D-GRU
+  resnet1d_gru:
+    enabled: true
+    resnet:
+      initial_filters: 128  # Increased capacity
+      num_blocks: [3, 4, 6, 3]  # ResNet50-like structure
+      kernel_size: 9  # Larger receptive field
+      dropout: 0.2
+      activation: "swish"  # Better activation
+      batch_norm: true
+      
+    gru:
+      hidden_size: 512  # Increased capacity
+      num_layers: 3  # Deeper network
+      bidirectional: true
+      dropout: 0.25
+      
+    attention:
+      enabled: true
+      num_heads: 16  # More attention heads
+      dropout: 0.1
+      
+    training:
+      batch_size: 64  # Optimized for H100
+      learning_rate: 0.0008
+      weight_decay: 0.00005
+      epochs: 150  # More epochs for full dataset
+      early_stopping_patience: 25
+      lr_scheduler: "cosine"
+      warmup_epochs: 10
+      
+  # Advanced EfficientNet
+  efficientnet:
+    enabled: true
+    model_name: "efficientnet-b5"  # Larger model
+    pretrained: true
+    num_classes: 6
+    dropout: 0.4
+    freeze_backbone: false
+    unfreeze_at_epoch: 15
+    training:
+      batch_size: 32  # Optimized for H100
+      learning_rate: 0.00005
+      weight_decay: 0.000005
+      epochs: 120
+      early_stopping_patience: 20
+      mixup_alpha: 0.4
+      cutmix_alpha: 1.2
+      
+  # Advanced Ensemble
+  ensemble:
+    enabled: true
+    method: "stacking"
+    meta_learner: "lightgbm"  # Better meta-learner
+    meta_learner_params:
+      n_estimators: 200
+      max_depth: 8
+      learning_rate: 0.05
+      subsample: 0.85
+      colsample_bytree: 0.85
+      num_leaves: 64
+    confidence_weighting: true
+    uncertainty_estimation: true
+
+# Optimized Training for H100
+training:
+  device: "cuda"
+  num_workers: 16  # Utilize H100 efficiently
+  pin_memory: true
+  persistent_workers: true
+  prefetch_factor: 4
+  checkpoint_dir: "models/checkpoints"
+  
+  cross_validation:
+    n_folds: 7  # More folds for robust evaluation
+    strategy: "patient_grouped"
+    shuffle: true
+    
+  class_balancing:
+    strategy: "weighted"
+    class_weights: "balanced"
+    
+  augmentation:
+    time_domain:
+      jitter: 0.15
+      scaling: 0.25
+      time_shift: 0.15
+      gaussian_noise: 0.03
+      elastic_transform: 0.1
+      
+    frequency_domain:
+      freq_mask: 0.15
+      time_mask: 0.15
+      spec_augment: true
+      mixup: true
+      cutmix: true
+      
+  optimization:
+    method: "optuna"
+    n_trials: 100  # More trials for better hyperparameters
+    timeout: 172800  # 48 hours
+    pruner: "hyperband"
+    sampler: "tpe"
+    
+  mixed_precision:
+    enabled: true
+    opt_level: "O2"  # Aggressive optimization
+
+# Enhanced Training Features
+advanced_training:
+  gradient_clipping: 1.0
+  label_smoothing: 0.1
+  stochastic_weight_averaging: true
+  cosine_annealing_restarts: true
+  multi_scale_training: true
+  progressive_resizing: true
+  test_time_augmentation: true
+  
+# Classes
+classes:
+  - "Seizure"
+  - "LPD"
+  - "GPD"
+  - "LRDA"
+  - "GRDA"
+  - "Other"
+
+# Enhanced Evaluation
+evaluation:
+  metrics:
+    - "accuracy"
+    - "balanced_accuracy"
+    - "sensitivity"
+    - "specificity"
+    - "f1_score"
+    - "auc_roc"
+    - "auc_pr"
+    - "confusion_matrix"
+    - "cohen_kappa"
+    - "matthews_corrcoef"
+    - "top_k_accuracy"
+    
+  clinical_metrics:
+    - "seizure_detection_sensitivity"
+    - "false_alarm_rate"
+    - "detection_latency"
+    - "positive_predictive_value"
+    - "negative_predictive_value"
+    - "clinical_utility_index"
+    
+  bootstrap:
+    enabled: true
+    n_bootstrap: 2000
+    confidence_level: 0.95
+
+# Advanced Interpretability
+interpretability:
+  methods:
+    - "gradcam"
+    - "gradcam_plus_plus"
+    - "integrated_gradients"
+    - "shap"
+    - "lime"
+    - "attention_weights"
+    - "layer_wise_relevance"
+    
+  uncertainty:
+    method: "monte_carlo_dropout"
+    n_samples: 200
+    temperature_scaling: true
+    deep_ensembles: true
+
+# Production Deployment
+deployment:
+  api:
+    host: "0.0.0.0"
+    port: 8000
+    workers: 8  # More workers for H100
+    reload: false
+    cors_origins: ["*"]
+    
+  model_serving:
+    batch_size: 8
+    max_batch_size: 64
+    timeout: 60
+    cache_predictions: true
+    cache_size: 5000
+
+# H100 Optimizations
+optimization:
+  model_compression:
+    pruning_sparsity: 0.2  # Conservative pruning
+    quantization: "fp16"  # FP16 for H100
+    knowledge_distillation: true
+    
+  inference:
+    use_gpu: true
+    mixed_precision: true
+    onnx_export: true
+    tensorrt_optimization: true
+    batch_inference: true
+    torch_compile: true  # PyTorch 2.0 compilation
+    
+# Comprehensive Logging
+logging:
+  level: "INFO"
+  mlflow_tracking_uri: "http://localhost:5000"
+  wandb_project: "hms-brain-activity-production"
+  tensorboard_dir: "logs/tensorboard"
+  experiment_name: "novita-h100-full-dataset"
+  run_name_prefix: "production-run"
+  log_model_architecture: true
+  log_gradients: true
+  log_activations: false
+  log_every_n_steps: 50
+  save_best_only: true
+
+# Enhanced Data Management
+data_management:
+  cache_processed_data: true
+  cache_dir: "data/processed/cache"
+  data_version: "v2.0"
+  validate_data: true
+  remove_corrupted: true
+  backup_frequency: "daily"
+  parallel_processing: true
+  memory_mapping: true
+
+# System Configuration for H100
+system:
+  random_seed: 42
+  deterministic: false  # Allow some non-determinism for speed
+  benchmark: true  # Enable cudnn benchmarking
+  max_memory_gb: 70  # H100 has 80GB
+  gpu_memory_fraction: 0.95
+  distributed_training: false
+  compile_model: true
+  flash_attention: true  # Use flash attention if available 
