@@ -22,6 +22,18 @@ echo "🧩 Step 4: Component Tests"
 echo "🧪 Testing core preprocessing pipeline..."
 python test_preprocessing.py
 
+echo "🧪 Testing adaptive preprocessing..."
+python test_adaptive_preprocessing.py
+
+echo "🧪 Testing adaptive preprocessing integration..."
+python test_adaptive_integration.py
+
+echo "🧪 Testing EEG Foundation Model..."
+python test_eeg_foundation_model.py
+
+echo "🧪 Testing explainable AI and interpretability..."
+python test_interpretability.py
+
 echo "🧪 Testing model components..."
 python test_training.py  
 

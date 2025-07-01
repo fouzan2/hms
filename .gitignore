@@ -243,7 +243,6 @@ data/processed/
 data/external/
 data/interim/
 data/models/
-models/
 *.npy
 *.npz
 

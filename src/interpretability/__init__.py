@@ -1,76 +1,88 @@
 """
-Interpretability package for HMS harmful brain activity classification.
-Provides explanations for model predictions and decision support.
+Interpretability package for HMS Brain Activity Classification.
+Provides explainable AI, counterfactual reasoning, and gradient-based explanations.
 """
 
-from dataclasses import dataclass
-from typing import Dict, List, Optional, Any, Union
-import numpy as np
+from .explainable_ai import (
+    ExplainableAI,
+    CounterfactualGenerator,
+    SHAPExplainer,
+    AttentionVisualizer,
+    ClinicalInterpreter,
+    ExplanationConfig
+)
 
-@dataclass
-class ExplanationResult:
-    """Container for explanation results."""
-    explanation_type: str
-    feature_importance: Optional[np.ndarray] = None
-    attention_weights: Optional[np.ndarray] = None
-    gradient_attribution: Optional[np.ndarray] = None
-    uncertainty: Optional[float] = None
-    confidence: Optional[float] = None
-    metadata: Optional[Dict[str, Any]] = None
-
-from .explainers import SHAPExplainer, LIMEExplainer
-from .gradient_attribution import (
-    IntegratedGradients,
+from .gradient_explanations import (
+    GradientExplanationFramework,
     GradCAM,
-    GradientAttribution
-)
-from .attention_analysis import AttentionVisualizer
-from .uncertainty_estimation import (
-    MonteCarloDropout,
-    UncertaintyEstimator
-)
-from .feature_importance import (
-    PermutationImportance,
-    FeatureImportanceReporter,
-    FeatureImportanceResult
+    IntegratedGradients,
+    GuidedBackpropagation,
+    SmoothGrad,
+    LayerActivationAnalysis
 )
 
-# Create simple classes for missing components
-class ModelInterpreter:
-    """Simple model interpreter."""
-    def __init__(self, model):
-        self.model = model
+
+def create_explainable_ai(model, config=None, device='auto'):
+    """
+    Create explainable AI framework for a given model.
     
-    def get_explanations(self, x, methods=['shap']):
-        """Get explanations using specified methods."""
-        return methods
+    Args:
+        model: Trained model to explain
+        config: ExplanationConfig instance or dict
+        device: Computing device
+        
+    Returns:
+        ExplainableAI instance
+    """
+    if device == 'auto':
+        device = 'cuda' if hasattr(model, 'device') else 'cpu'
+    
+    if config is None:
+        config = ExplanationConfig()
+    elif isinstance(config, dict):
+        config = ExplanationConfig(**config)
+    
+    return ExplainableAI(model, config, device)
 
-from .clinical_explanation import ClinicalExplanationGenerator
+
+def create_gradient_explainer(model, target_layers=None, device='auto'):
+    """
+    Create gradient-based explanation framework.
+    
+    Args:
+        model: Trained model to explain
+        target_layers: List of layer names for Grad-CAM
+        device: Computing device
+        
+    Returns:
+        GradientExplanationFramework instance
+    """
+    if device == 'auto':
+        device = 'cuda' if hasattr(model, 'device') else 'cpu'
+    
+    return GradientExplanationFramework(model, target_layers, device)
+
 
 __all__ = [
-    # Core types
-    'ExplanationResult',
+    # Main frameworks
+    'ExplainableAI',
+    'GradientExplanationFramework',
     
-    # Explainers
+    # Explainable AI components
+    'CounterfactualGenerator',
     'SHAPExplainer',
-    'LIMEExplainer',
-    'ModelInterpreter',
-    'ClinicalExplanationGenerator',
-    
-    # Attribution methods
-    'IntegratedGradients',
-    'GradCAM',
-    'GradientAttribution',
-    
-    # Attention analysis
     'AttentionVisualizer',
+    'ClinicalInterpreter',
+    'ExplanationConfig',
     
-    # Uncertainty estimation
-    'MonteCarloDropout',
-    'UncertaintyEstimator',
+    # Gradient explanation components
+    'GradCAM',
+    'IntegratedGradients',
+    'GuidedBackpropagation',
+    'SmoothGrad',
+    'LayerActivationAnalysis',
     
-    # Feature importance
-    'PermutationImportance',
-    'FeatureImportanceReporter',
-    'FeatureImportanceResult'
+    # Factory functions
+    'create_explainable_ai',
+    'create_gradient_explainer'
 ] 

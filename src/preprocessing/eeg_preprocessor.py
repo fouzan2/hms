@@ -1,6 +1,7 @@
 """
 Comprehensive EEG preprocessing pipeline for HMS Brain Activity Classification.
 Includes artifact removal, filtering, denoising, and normalization.
+Now with adaptive preprocessing support for automatic parameter optimization.
 """
 
 import numpy as np
@@ -18,16 +19,29 @@ import yaml
 import warnings
 warnings.filterwarnings('ignore')
 
+from .adaptive_preprocessor import AdaptivePreprocessor
+
 logger = logging.getLogger(__name__)
 
 
 class EEGPreprocessor:
-    """Comprehensive EEG preprocessing pipeline."""
+    """Comprehensive EEG preprocessing pipeline with adaptive optimization support."""
     
-    def __init__(self, config_path: str = "config/config.yaml"):
-        """Initialize preprocessor with configuration."""
-        with open(config_path, 'r') as f:
-            self.config = yaml.safe_load(f)
+    def __init__(self, config_path: Union[str, Dict] = "config/config.yaml", use_adaptive: bool = False):
+        """
+        Initialize preprocessor with configuration.
+        
+        Args:
+            config_path: Path to configuration file or configuration dictionary
+            use_adaptive: Whether to use adaptive preprocessing
+        """
+        if isinstance(config_path, dict):
+            # Config passed as dictionary
+            self.config = config_path
+        else:
+            # Config passed as file path
+            with open(config_path, 'r') as f:
+                self.config = yaml.safe_load(f)
             
         self.preprocessing_config = self.config['preprocessing']
         self.eeg_config = self.config['eeg']
@@ -36,6 +50,14 @@ class EEGPreprocessor:
         # Initialize scalers
         self.scaler = self._init_scaler()
         
+        # Initialize adaptive preprocessor if enabled
+        self.use_adaptive = use_adaptive
+        if use_adaptive:
+            self.adaptive_preprocessor = AdaptivePreprocessor(self.config)
+            logger.info("Adaptive preprocessing enabled")
+        else:
+            self.adaptive_preprocessor = None
+            
     def _init_scaler(self):
         """Initialize the appropriate scaler based on configuration."""
         method = self.preprocessing_config['normalization']['method']
@@ -64,9 +86,12 @@ class EEGPreprocessor:
         # Create Raw object
         raw = mne.io.RawArray(eeg_data, info)
         
-        # Set standard montage
-        montage = mne.channels.make_standard_montage('standard_1020')
-        raw.set_montage(montage, on_missing='ignore')
+        # Set standard montage (handle gracefully if missing electrode positions)
+        try:
+            montage = mne.channels.make_standard_montage('standard_1020')
+            raw.set_montage(montage, on_missing='ignore')
+        except Exception as e:
+            logger.warning(f"Could not set montage: {e}. Continuing without electrode positions.")
         
         return raw
         
@@ -141,7 +166,13 @@ class EEGPreprocessor:
         raw_interp.info['bads'] = bad_channels
         
         logger.info(f"Interpolating {len(bad_channels)} bad channels")
-        raw_interp.interpolate_bads(reset_bads=True)
+        
+        try:
+            raw_interp.interpolate_bads(reset_bads=True)
+        except Exception as e:
+            logger.warning(f"Could not interpolate bad channels: {e}. Skipping interpolation.")
+            # Remove bad channels from bads list if interpolation fails
+            raw_interp.info['bads'] = []
         
         return raw_interp
         
@@ -307,60 +338,142 @@ class EEGPreprocessor:
                       eeg_data: np.ndarray,
                       channel_names: List[str],
                       apply_ica: bool = True,
-                      remove_bad_channels: bool = True) -> np.ndarray:
-        """Complete preprocessing pipeline for EEG data."""
-        logger.info("Starting EEG preprocessing pipeline")
+                      remove_bad_channels: bool = True,
+                      use_adaptive: Optional[bool] = None) -> Tuple[np.ndarray, Dict[str, any]]:
+        """
+        Complete preprocessing pipeline for EEG data.
         
-        # Create MNE Raw object
-        raw = self.create_mne_raw(eeg_data, channel_names)
-        
-        # 1. Detect and interpolate bad channels
-        if remove_bad_channels:
-            bad_channels = self.detect_bad_channels(raw)
-            raw = self.interpolate_bad_channels(raw, bad_channels)
+        Args:
+            eeg_data: Raw EEG data array
+            channel_names: List of channel names
+            apply_ica: Whether to apply ICA
+            remove_bad_channels: Whether to remove bad channels
+            use_adaptive: Override adaptive preprocessing setting
             
-        # 2. Apply bandpass filter
-        raw = self.apply_bandpass_filter(raw)
+        Returns:
+            Tuple of (preprocessed_data, preprocessing_info)
+        """
+        # Determine whether to use adaptive preprocessing
+        use_adaptive_here = use_adaptive if use_adaptive is not None else self.use_adaptive
         
-        # 3. Apply notch filter
-        raw = self.apply_notch_filter(raw)
-        
-        # 4. Remove artifacts with ICA
-        if apply_ica:
-            raw = self.remove_artifacts_ica(raw)
+        if use_adaptive_here and self.adaptive_preprocessor is not None:
+            logger.info("Using adaptive preprocessing")
+            preprocessed_data, processing_info = self.adaptive_preprocessor.preprocess(
+                eeg_data, channel_names
+            )
+            return preprocessed_data, processing_info
+        else:
+            # Standard preprocessing pipeline
+            logger.info("Starting standard EEG preprocessing pipeline")
             
-        # Get data array
-        data = raw.get_data()
+            # Create MNE Raw object
+            raw = self.create_mne_raw(eeg_data, channel_names)
+            
+            # 1. Detect and interpolate bad channels
+            if remove_bad_channels:
+                bad_channels = self.detect_bad_channels(raw)
+                raw = self.interpolate_bad_channels(raw, bad_channels)
+                
+            # 2. Apply bandpass filter
+            raw = self.apply_bandpass_filter(raw)
+            
+            # 3. Apply notch filter
+            raw = self.apply_notch_filter(raw)
+            
+            # 4. Remove artifacts with ICA
+            if apply_ica:
+                raw = self.remove_artifacts_ica(raw)
+                
+            # Get data array
+            data = raw.get_data()
+            
+            # 5. Apply wavelet denoising
+            data = self.apply_wavelet_denoising(data)
+            
+            # 6. Remove baseline drift
+            data = self.remove_baseline_drift(data)
+            
+            # 7. Detect and remove spikes
+            data = self.detect_and_remove_spikes(data)
+            
+            # 8. Normalize data
+            data = self.normalize_data(data)
+            
+            logger.info("EEG preprocessing completed")
+            
+            # Create processing info
+            processing_info = {
+                'method': 'standard',
+                'bad_channels': bad_channels if remove_bad_channels else [],
+                'applied_ica': apply_ica,
+                'normalization_method': self.preprocessing_config['normalization']['method']
+            }
+            
+            return data, processing_info
+            
+    def preprocess(self, eeg_data: np.ndarray, 
+                  channel_names: Optional[List[str]] = None) -> np.ndarray:
+        """
+        Backward compatible preprocessing method.
         
-        # 5. Apply wavelet denoising
-        data = self.apply_wavelet_denoising(data)
-        
-        # 6. Remove baseline drift
-        data = self.remove_baseline_drift(data)
-        
-        # 7. Detect and remove spikes
-        data = self.detect_and_remove_spikes(data)
-        
-        # 8. Normalize data
-        data = self.normalize_data(data)
-        
-        logger.info("EEG preprocessing completed")
-        
-        return data
+        Args:
+            eeg_data: Raw EEG data
+            channel_names: Optional channel names
+            
+        Returns:
+            Preprocessed data
+        """
+        if channel_names is None:
+            channel_names = [f'CH_{i}' for i in range(eeg_data.shape[0])]
+            
+        preprocessed, _ = self.preprocess_eeg(eeg_data, channel_names)
+        return preprocessed
         
     def preprocess_batch(self, 
                         eeg_batch: List[np.ndarray],
                         channel_names: List[str],
-                        n_jobs: int = -1) -> List[np.ndarray]:
-        """Preprocess a batch of EEG recordings in parallel."""
+                        n_jobs: int = -1,
+                        use_adaptive: Optional[bool] = None) -> List[Tuple[np.ndarray, Dict]]:
+        """
+        Preprocess a batch of EEG recordings in parallel.
+        
+        Args:
+            eeg_batch: List of EEG recordings
+            channel_names: Channel names
+            n_jobs: Number of parallel jobs
+            use_adaptive: Override adaptive preprocessing setting
+            
+        Returns:
+            List of (preprocessed_data, processing_info) tuples
+        """
         from joblib import Parallel, delayed
         
         logger.info(f"Preprocessing batch of {len(eeg_batch)} recordings")
         
         # Process in parallel
         preprocessed = Parallel(n_jobs=n_jobs)(
-            delayed(self.preprocess_eeg)(eeg, channel_names) 
+            delayed(self.preprocess_eeg)(eeg, channel_names, use_adaptive=use_adaptive) 
             for eeg in eeg_batch
         )
         
-        return preprocessed 
+        return preprocessed
+        
+    def get_adaptive_metrics(self) -> Optional[Dict[str, any]]:
+        """Get metrics from adaptive preprocessing if available."""
+        if self.adaptive_preprocessor is not None:
+            return self.adaptive_preprocessor.get_metrics()
+        return None
+        
+    def save_adaptive_optimizer(self, path: Path):
+        """Save adaptive preprocessing optimizer if available."""
+        if self.adaptive_preprocessor is not None:
+            self.adaptive_preprocessor.save_optimizer(path)
+        else:
+            logger.warning("No adaptive preprocessor to save")
+            
+    def load_adaptive_optimizer(self, path: Path):
+        """Load adaptive preprocessing optimizer if available."""
+        if self.adaptive_preprocessor is not None:
+            self.adaptive_preprocessor.load_optimizer(path)
+        else:
+            logger.warning("No adaptive preprocessor to load into") 

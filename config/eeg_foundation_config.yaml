@@ -1,0 +1,292 @@
+# EEG Foundation Model Configuration for HMS Brain Activity Classification
+# This configuration defines the architecture and training parameters for the foundation model
+
+# Model Architecture
+model:
+  # Core transformer architecture
+  d_model: 512              # Hidden dimension size
+  n_heads: 8                # Number of attention heads
+  n_layers: 12              # Number of transformer layers
+  d_ff: 2048                # Feed-forward network dimension
+  dropout: 0.1              # Dropout rate
+  
+  # EEG-specific parameters
+  n_channels: 19            # Number of EEG channels (standard 10-20 system)
+  max_seq_length: 10000     # Maximum sequence length (50s at 200Hz)
+  patch_size: 200           # Temporal patch size (1s at 200Hz)
+  overlap: 0.5              # Overlap between patches
+  
+  # Positional encoding
+  max_position_embeddings: 1000   # Maximum position embeddings
+  use_learned_positional: true    # Use learned vs sinusoidal positional embeddings
+  
+  # Advanced features
+  use_multi_scale: true           # Enable multi-scale temporal encoding
+  scale_factors: [1, 2, 4, 8]     # Temporal scale factors
+  use_channel_attention: true     # Enable cross-channel attention
+  channel_attention_heads: 4      # Number of channel attention heads
+
+# Pre-training Configuration
+pretraining:
+  # Masked modeling parameters
+  mask_ratio: 0.15                # Ratio of patches to mask
+  reconstruction_weight: 1.0      # Weight for reconstruction loss
+  
+  # Contrastive learning parameters
+  contrastive_weight: 0.5         # Weight for contrastive loss
+  contrastive_temperature: 0.07   # Temperature for contrastive learning
+  
+  # Training parameters
+  learning_rate: 1e-3             # Pre-training learning rate
+  weight_decay: 0.01              # Weight decay
+  epochs: 100                     # Pre-training epochs
+  batch_size: 32                  # Batch size for pre-training
+  warmup_steps: 1000              # Learning rate warmup steps
+  
+  # Data parameters
+  min_sequence_length: 1000       # Minimum EEG sequence length
+  augmentation_probability: 0.3   # Data augmentation probability
+  
+  # Checkpointing
+  save_steps: 1000                # Save checkpoint every N steps
+  eval_steps: 500                 # Evaluation every N steps
+  output_dir: "checkpoints/pretraining"  # Pre-training output directory
+
+# Fine-tuning Configuration
+finetuning:
+  # Training parameters
+  learning_rate: 1e-4             # Fine-tuning learning rate
+  weight_decay: 0.01              # Weight decay
+  epochs: 50                      # Fine-tuning epochs
+  batch_size: 16                  # Batch size for fine-tuning
+  max_grad_norm: 1.0              # Gradient clipping norm
+  
+  # Fine-tuning strategy
+  freeze_backbone: false          # Whether to freeze backbone initially
+  freeze_epochs: 10               # Epochs to keep backbone frozen
+  unfreeze_layers: 3              # Number of top layers to unfreeze first
+  gradual_unfreezing: true        # Use gradual unfreezing strategy
+  
+  # Learning rate scheduling
+  use_scheduler: true             # Enable learning rate scheduling
+  scheduler_type: "cosine"        # Scheduler type: cosine, linear, exponential
+  scheduler_patience: 5           # Patience for ReduceLROnPlateau
+  min_lr: 1e-6                    # Minimum learning rate
+  
+  # Regularization
+  dropout_rate: 0.1               # Classification head dropout
+  label_smoothing: 0.1            # Label smoothing factor
+  mixup_alpha: 0.2                # Mixup alpha parameter
+  use_mixup: false                # Enable mixup data augmentation
+  
+  # Early stopping
+  early_stopping: true            # Enable early stopping
+  patience: 10                    # Early stopping patience
+  min_delta: 0.001                # Minimum improvement threshold
+  
+  # Evaluation and saving
+  eval_steps: 500                 # Evaluation every N steps
+  save_steps: 1000                # Save checkpoint every N steps
+  logging_steps: 100              # Logging every N steps
+  save_best_model: true           # Save best model during training
+  save_last_model: true           # Save final model
+  output_dir: "checkpoints/finetuning"  # Fine-tuning output directory
+  
+  # Data augmentation
+  use_augmentation: true          # Enable data augmentation
+  augmentation_probability: 0.3   # Augmentation probability
+
+# Transfer Learning Configuration
+transfer_learning:
+  # Model paths
+  pretrained_model_path: "models/pretrained/eeg_foundation_v1"  # Path to pre-trained model
+  
+  # Pipeline settings
+  auto_find_lr: true              # Automatically find optimal learning rate
+  lr_range_test: true             # Perform learning rate range test
+  
+  # Cross-validation
+  use_cross_validation: false     # Enable k-fold cross-validation
+  n_folds: 5                      # Number of folds for cross-validation
+  
+  # Model ensembling
+  ensemble_models: false          # Create ensemble of fine-tuned models
+  n_ensemble_models: 3            # Number of models in ensemble
+
+# Data Configuration
+data:
+  # Input specifications
+  sampling_rate: 200              # EEG sampling rate (Hz)
+  n_channels: 19                  # Number of EEG channels
+  channel_names:                  # Standard 10-20 system channel names
+    - "Fp1"
+    - "Fp2"
+    - "F3"
+    - "F4"
+    - "C3"
+    - "C4"
+    - "P3"
+    - "P4"
+    - "O1"
+    - "O2"
+    - "F7"
+    - "F8"
+    - "T3"
+    - "T4"
+    - "T5"
+    - "T6"
+    - "Fz"
+    - "Cz"
+    - "Pz"
+  
+  # Data processing
+  normalize_channels: true        # Normalize each channel independently
+  remove_dc: true                 # Remove DC component
+  apply_bandpass: true            # Apply bandpass filtering
+  bandpass_low: 0.5               # Bandpass low frequency (Hz)
+  bandpass_high: 50.0             # Bandpass high frequency (Hz)
+  
+  # Data splitting
+  train_split: 0.7                # Training set proportion
+  val_split: 0.15                 # Validation set proportion
+  test_split: 0.15                # Test set proportion
+  
+  # Data loading
+  num_workers: 4                  # Number of data loading workers
+  pin_memory: true                # Pin memory for GPU training
+  shuffle_train: true             # Shuffle training data
+
+# Model Variants
+model_variants:
+  # Small model for testing/prototyping
+  small:
+    d_model: 128
+    n_heads: 4
+    n_layers: 6
+    d_ff: 512
+    max_seq_length: 5000
+    batch_size: 32
+  
+  # Medium model for balanced performance
+  medium:
+    d_model: 256
+    n_heads: 8
+    n_layers: 9
+    d_ff: 1024
+    max_seq_length: 8000
+    batch_size: 16
+  
+  # Large model for maximum performance
+  large:
+    d_model: 512
+    n_heads: 16
+    n_layers: 15
+    d_ff: 2048
+    max_seq_length: 12000
+    batch_size: 8
+  
+  # Extra large model for research
+  xlarge:
+    d_model: 768
+    n_heads: 24
+    n_layers: 18
+    d_ff: 3072
+    max_seq_length: 15000
+    batch_size: 4
+
+# Task-specific Configurations
+tasks:
+  # HMS brain activity classification
+  hms_classification:
+    num_classes: 6
+    class_names: ["seizure", "lpd", "gpd", "lrda", "grda", "other"]
+    class_weights: null             # Auto-compute or specify weights
+    focal_loss: false               # Use focal loss for imbalanced data
+    
+  # Seizure detection (binary)
+  seizure_detection:
+    num_classes: 2
+    class_names: ["non_seizure", "seizure"]
+    threshold: 0.5                  # Classification threshold
+    
+  # Sleep stage classification
+  sleep_staging:
+    num_classes: 5
+    class_names: ["wake", "n1", "n2", "n3", "rem"]
+    sequence_length: 30             # 30-second epochs
+
+# Hardware Configuration
+hardware:
+  # Device settings
+  device: "cuda"                  # cuda, cpu, or auto
+  mixed_precision: true           # Enable mixed precision training
+  compile_model: false            # Use torch.compile (PyTorch 2.0+)
+  
+  # Memory optimization
+  gradient_checkpointing: false   # Enable gradient checkpointing
+  max_memory_gb: 16               # Maximum GPU memory usage
+  
+  # Distributed training
+  distributed: false              # Enable distributed training
+  world_size: 1                   # Number of processes
+  backend: "nccl"                 # Distributed backend
+  
+  # Performance optimization
+  benchmark_cudnn: true           # Enable cuDNN benchmarking
+  num_threads: 8                  # Number of CPU threads
+
+# Monitoring and Logging
+monitoring:
+  # Experiment tracking
+  use_wandb: false                # Enable Weights & Biases logging
+  wandb_project: "eeg_foundation" # W&B project name
+  wandb_entity: null              # W&B entity name
+  
+  # TensorBoard
+  use_tensorboard: true           # Enable TensorBoard logging
+  tensorboard_dir: "logs/tensorboard"  # TensorBoard log directory
+  
+  # Metrics tracking
+  track_gradients: false          # Track gradient norms
+  track_weights: false            # Track weight distributions
+  track_lr: true                  # Track learning rate
+  
+  # Visualization
+  save_attention_maps: false      # Save attention visualizations
+  save_embeddings: false          # Save embedding visualizations
+  
+  # Model analysis
+  profile_model: false            # Profile model performance
+  trace_model: false              # Trace model execution
+
+# Deployment Configuration
+deployment:
+  # Model export
+  export_onnx: true               # Export to ONNX format
+  onnx_opset_version: 14          # ONNX opset version
+  
+  # Model optimization
+  quantize_model: false           # Apply quantization
+  quantization_backend: "qnnpack" # Quantization backend
+  
+  # Model serving
+  batch_size: 1                   # Inference batch size
+  max_sequence_length: 10000      # Maximum sequence for inference
+  
+  # Edge deployment
+  optimize_for_mobile: false      # Optimize for mobile deployment
+  use_lite_interpreter: false     # Use PyTorch Lite interpreter
+
+# Reproducibility
+reproducibility:
+  seed: 42                        # Random seed
+  deterministic: true             # Use deterministic algorithms
+  benchmark: false                # Disable benchmarking for reproducibility
+
+# Paths
+paths:
+  data_dir: "data"                # Data directory
+  model_dir: "models"             # Model directory
+  log_dir: "logs"                 # Log directory
+  checkpoint_dir: "checkpoints"   # Checkpoint directory
+  output_dir: "outputs"           # Output directory 

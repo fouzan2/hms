@@ -27,6 +27,12 @@ from .feature_extraction import (
     FeatureSet,
     extract_features
 )
+from .adaptive_preprocessor import (
+    AdaptivePreprocessor,
+    AdaptiveParameters,
+    DataProfiler,
+    PreprocessingOptimizer
+)
 
 __all__ = [
     # Main classes
@@ -56,5 +62,11 @@ __all__ = [
     'EEGFeatureExtractor',
     'FeatureSelector',
     'FeatureSet',
-    'extract_features'
+    'extract_features',
+    
+    # Adaptive preprocessing
+    'AdaptivePreprocessor',
+    'AdaptiveParameters',
+    'DataProfiler',
+    'PreprocessingOptimizer'
 ] 
