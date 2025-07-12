@@ -1,0 +1,279 @@
+# Explainable AI Configuration for HMS Brain Activity Classification
+# Configuration for counterfactual reasoning, SHAP explanations, gradient methods,
+# and clinical interpretation tools
+
+# Counterfactual Generation Parameters
+counterfactual:
+  # Generation method: 'gradient_based', 'genetic', 'optimization'
+  method: 'gradient_based'
+  
+  # Optimization parameters
+  max_iterations: 500
+  learning_rate: 0.01
+  tolerance: 1e-6
+  
+  # Loss function weights
+  lambda_proximity: 1.0      # Weight for proximity to original
+  lambda_diversity: 0.1      # Weight for diversity among counterfactuals
+  lambda_sparsity: 0.5       # Weight for sparsity (minimize changes)
+  lambda_consistency: 0.2    # Weight for temporal consistency
+  
+  # Constraints
+  max_relative_change: 0.5   # Maximum relative change allowed
+  preserve_channels: []      # Channels to preserve unchanged
+  temporal_smoothing: true   # Apply temporal smoothing to changes
+  
+  # Multiple counterfactuals
+  n_diverse_samples: 5       # Number of diverse counterfactuals to generate
+  diversity_threshold: 0.1   # Minimum diversity between samples
+
+# SHAP Configuration
+shap:
+  # Method: 'deep', 'gradient', 'kernel', 'permutation'
+  method: 'deep'
+  
+  # Sampling parameters
+  n_background_samples: 100  # Number of background samples
+  n_explanation_samples: 50  # Number of samples for explanation
+  batch_size: 16             # Batch size for computation
+  
+  # Deep explainer specific
+  use_delta: true            # Use delta for deep explainer
+  multiply_by_inputs: true   # Multiply SHAP values by inputs
+  
+  # Analysis parameters
+  feature_grouping: 'channels'  # 'channels', 'temporal', 'frequency'
+  normalize_values: true     # Normalize SHAP values
+  
+  # Visualization
+  plot_summary: true         # Create summary plots
+  plot_waterfall: true       # Create waterfall plots
+  plot_force: true           # Create force plots
+
+# Gradient-based Explanations
+gradient_methods:
+  # Integrated Gradients
+  integrated_gradients:
+    enabled: true
+    steps: 50                # Number of integration steps
+    baseline_method: 'zero'  # 'zero', 'blur', 'noise', 'uniform'
+    noise_level: 0.0         # Noise level for baseline (if noise method)
+  
+  # Guided Backpropagation
+  guided_backprop:
+    enabled: true
+    modify_relu: true        # Modify ReLU backward pass
+  
+  # SmoothGrad
+  smooth_grad:
+    enabled: true
+    noise_level: 0.1         # Standard deviation of noise
+    n_samples: 50            # Number of noisy samples
+    
+  # Grad-CAM
+  grad_cam:
+    enabled: true
+    target_layers:           # Layers to extract gradients from
+      - "layer4"
+      - "transformer_blocks.11"
+      - "classification_head"
+    upsampling_method: 'linear'  # Method for upsampling CAMs
+    
+  # Layer Activation Analysis
+  activation_analysis:
+    enabled: true
+    analyze_all_layers: false
+    target_layers:
+      - "transformer_blocks.0"
+      - "transformer_blocks.6"
+      - "transformer_blocks.11"
+
+# Attention Visualization (for transformer models)
+attention:
+  # Visualization parameters
+  visualize_heads: [0, 1, 2, 3]  # Specific attention heads to visualize
+  visualize_layers: [0, 6, 11]   # Specific layers to visualize
+  
+  # Analysis
+  compute_head_importance: true   # Compute importance of attention heads
+  compute_layer_importance: true  # Compute importance of layers
+  
+  # Attention patterns
+  pattern_analysis:
+    enabled: true
+    detect_outliers: true    # Detect unusual attention patterns
+    temporal_analysis: true  # Analyze temporal attention patterns
+    channel_analysis: true   # Analyze cross-channel attention
+
+# Clinical Interpretation
+clinical:
+  # Frequency bands for analysis (Hz)
+  frequency_bands:
+    delta: [0.5, 4.0]
+    theta: [4.0, 8.0]
+    alpha: [8.0, 13.0]
+    beta: [13.0, 30.0]
+    gamma: [30.0, 100.0]
+    high_gamma: [70.0, 100.0]
+  
+  # Clinical features to extract
+  features:
+    power_spectral_density: true
+    spectral_entropy: true
+    hjorth_parameters: true
+    connectivity_measures: true
+    nonlinear_features: true
+    artifact_detection: true
+  
+  # EEG channel mapping (10-20 system)
+  channel_mapping:
+    frontal: ["Fp1", "Fp2", "F3", "F4", "F7", "F8", "Fz"]
+    central: ["C3", "C4", "Cz"]
+    parietal: ["P3", "P4", "Pz"]
+    occipital: ["O1", "O2"]
+    temporal: ["T3", "T4", "T5", "T6"]
+  
+  # Clinical recommendations
+  recommendation_rules:
+    high_confidence_threshold: 0.9
+    low_confidence_threshold: 0.7
+    seizure_classes: ["seizure", "lpd", "gpd"]
+    monitoring_classes: ["lrda", "grda"]
+  
+  # Risk factor identification
+  risk_factors:
+    channel_asymmetry_threshold: 2.0
+    power_anomaly_threshold: 3.0
+    connectivity_threshold: 0.8
+
+# Visualization Parameters
+visualization:
+  # General settings
+  style: 'seaborn'
+  figure_size: [12, 8]
+  dpi: 300
+  save_format: 'png'
+  
+  # Color schemes
+  colormap_diverging: 'RdBu_r'
+  colormap_sequential: 'viridis'
+  colormap_attention: 'Blues'
+  
+  # Dashboard settings
+  interactive_dashboard: true
+  include_plotly: true
+  dashboard_theme: 'plotly_white'
+  
+  # Export settings
+  save_plots: true
+  plot_directory: 'outputs/explanations'
+  
+  # Specific plot settings
+  heatmap:
+    show_values: false
+    linewidths: 0.5
+  
+  line_plots:
+    linewidth: 2
+    alpha: 0.8
+  
+  bar_plots:
+    show_values: true
+    value_format: '.3f'
+
+# Performance and Optimization
+performance:
+  # Computation settings
+  device: 'auto'             # 'cpu', 'cuda', 'auto'
+  mixed_precision: false     # Use mixed precision for faster computation
+  
+  # Parallelization
+  n_jobs: -1                 # Number of parallel jobs (-1 for all cores)
+  parallel_backend: 'threading'  # 'threading', 'multiprocessing'
+  
+  # Memory management
+  batch_processing: true     # Process in batches to save memory
+  max_memory_gb: 8          # Maximum memory usage
+  clear_cache: true         # Clear cache between explanations
+  
+  # Optimization
+  compile_models: false     # Use torch.compile (PyTorch 2.0+)
+  use_checkpointing: false  # Use gradient checkpointing
+
+# Experimental Features
+experimental:
+  # Advanced counterfactual methods
+  adversarial_counterfactuals: false
+  causal_counterfactuals: false
+  
+  # Advanced SHAP methods
+  partition_explainer: false
+  exact_explainer: false
+  
+  # Novel explanation methods
+  prototype_explanations: false
+  concept_activation_vectors: false
+  
+  # Temporal explanations
+  time_series_shap: false
+  temporal_importance: false
+
+# Validation and Quality Control
+validation:
+  # Explanation quality metrics
+  compute_faithfulness: true      # Measure explanation faithfulness
+  compute_stability: true         # Measure explanation stability
+  compute_completeness: true      # Measure explanation completeness
+  
+  # Sanity checks
+  sanity_check_gradients: true    # Check gradient sanity
+  sanity_check_attributions: true # Check attribution sanity
+  
+  # Cross-validation
+  explanation_cv_folds: 3         # Number of folds for explanation validation
+  stability_noise_levels: [0.01, 0.05, 0.1]  # Noise levels for stability test
+
+# Output Configuration
+output:
+  # Report generation
+  generate_report: true
+  report_format: 'html'          # 'html', 'pdf', 'markdown'
+  include_visualizations: true
+  
+  # File organization
+  organize_by_date: true
+  organize_by_model: true
+  
+  # Data export
+  export_explanations: true
+  export_format: 'json'          # 'json', 'pickle', 'csv'
+  
+  # Logging
+  log_level: 'INFO'              # 'DEBUG', 'INFO', 'WARNING', 'ERROR'
+  log_to_file: true
+  log_file: 'logs/explainable_ai.log'
+
+# Integration Settings
+integration:
+  # Model compatibility
+  supported_models:
+    - 'ResNet1D_GRU'
+    - 'EfficientNetSpectrogram'
+    - 'HMSEnsembleModel'
+    - 'EEGFoundationModel'
+  
+  # Preprocessing integration
+  use_adaptive_preprocessing: true
+  preprocessing_explanation: true
+  
+  # Foundation model specific
+  foundation_model:
+    explain_attention: true
+    explain_embeddings: true
+    explain_pretraining: false
+  
+  # Ensemble model specific
+  ensemble_model:
+    explain_individual_models: true
+    explain_fusion: true
+    explain_meta_learner: false 

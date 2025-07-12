@@ -1,0 +1,155 @@
+# Adaptive Preprocessing Configuration for HMS Brain Activity Classification
+# This configuration enables automatic parameter optimization based on data quality
+
+preprocessing:
+  # Enable adaptive preprocessing
+  use_adaptive: true
+  
+  # Adaptive preprocessing settings
+  adaptive:
+    # Cache settings
+    cache_size: 1000
+    cache_enabled: true
+    
+    # Optimizer model settings
+    optimizer_model_path: "models/adaptive_preprocessor/optimizer.pth"
+    pretrained_available: false
+    
+    # Quality thresholds
+    quality_thresholds:
+      use_adaptive_threshold: 0.9  # Use adaptive if quality below this
+      minimum_acceptable_quality: 0.3
+      target_quality: 0.85
+    
+    # Parameter bounds
+    parameter_bounds:
+      highpass_freq:
+        min: 0.1
+        max: 2.0
+        default: 0.5
+      lowpass_freq:
+        min: 30.0
+        max: 100.0
+        default: 50.0
+      notch_freq:
+        options: [50.0, 60.0, null]
+      notch_quality:
+        min: 10.0
+        max: 40.0
+        default: 30.0
+      ica_components:
+        min: 5
+        max: 30
+        default: 15
+      artifact_threshold:
+        min: 0.5
+        max: 4.0
+        default: 2.0
+      wavelet_level:
+        min: 3
+        max: 8
+        default: 5
+      denoising_threshold:
+        min: 0.05
+        max: 0.6
+        default: 0.2
+    
+    # Available methods
+    methods:
+      ica_methods: ['fastica', 'infomax', 'picard']
+      wavelet_types: ['db4', 'sym5', 'coif3', 'bior3.5']
+      interpolation_methods: ['spherical', 'linear', 'none']
+      normalization_methods: ['robust', 'standard', 'minmax']
+    
+    # Neural network architecture
+    optimizer_network:
+      profile_dim: 50
+      hidden_dim: 256
+      dropout: 0.2
+      learning_rate: 0.001
+      epochs: 100
+      batch_size: 32
+    
+    # Performance monitoring
+    monitoring:
+      log_metrics: true
+      save_profiles: true
+      profile_save_dir: "logs/adaptive_preprocessing/profiles"
+      metrics_save_interval: 100
+    
+    # Heuristic adjustments
+    heuristics:
+      line_noise_detection_threshold: 2.0
+      movement_artifact_multiplier: 1.5
+      min_channels_for_ica: 10
+      
+  # Standard preprocessing settings (fallback)
+  standard:
+    filter:
+      lowcut: 0.5
+      highcut: 50
+      order: 4
+    
+    notch_filter:
+      freqs: [50, 60]
+      quality_factor: 30
+    
+    artifact_removal:
+      use_ica: true
+      n_components: 15
+      ica_method: 'fastica'
+      eog_channels: ['Fp1', 'Fp2']
+      
+    denoising:
+      use_wavelet: true
+      wavelet_type: 'db4'
+      wavelet_level: 5
+      
+    normalization:
+      method: 'robust'
+      
+# Training integration settings
+training:
+  # Use adaptive preprocessing during training
+  use_adaptive_preprocessing: true
+  
+  # Preprocessing optimizer training
+  train_preprocessing_optimizer:
+    enabled: true
+    update_frequency: 1000  # Update optimizer every N batches
+    validation_split: 0.1
+    min_samples_for_update: 100
+    
+  # Data augmentation compatibility
+  augmentation:
+    apply_after_preprocessing: true
+    preserve_quality_improvements: true
+    
+# Evaluation settings
+evaluation:
+  # Compare preprocessing methods
+  compare_preprocessing:
+    enabled: true
+    methods: ['standard', 'adaptive']
+    metrics_to_compare:
+      - 'quality_score'
+      - 'snr'
+      - 'artifact_ratio'
+      - 'processing_time'
+      
+# System settings
+system:
+  # Device selection
+  device: 'cuda'  # 'cuda' or 'cpu'
+  
+  # Parallel processing
+  n_jobs: -1  # Use all available cores
+  
+  # Memory management
+  max_cache_memory_mb: 500
+  
+# Logging settings
+logging:
+  level: 'INFO'
+  save_preprocessing_comparisons: true
+  comparison_save_dir: 'logs/preprocessing_comparisons' 

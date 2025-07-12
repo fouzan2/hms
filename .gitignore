@@ -243,6 +243,7 @@ data/processed/
 data/external/
 data/interim/
 data/models/
+deploy_package_enhanced/data/
 *.npy
 *.npz
 
@@ -361,3 +362,7 @@ plots/
 !data/raw/example_figures/
 !examples/
 !QUICKSTART.md
+
+# Installer files
+Miniconda3-latest-Linux-x86_64.sh
+*.tar.gz
